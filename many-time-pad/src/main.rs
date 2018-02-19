@@ -25,11 +25,12 @@ fn ciphers_max_length(ciphers: &Vec<String>) -> usize {
     length
 }
 
-fn empty_string(len: usize) -> String {
+fn space_string(len: usize) -> String {
     let mut i = 0;
     let mut str = String::new();
     while i < len as u32 {
-        str.push(' ');
+        str.push('2');
+        str.push('0');
         i = i + 1;
     }
     str
@@ -39,29 +40,46 @@ fn is_alpha(char: char) -> bool {
     (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z')
 }
 
+fn is_ascii_printable(char: char) -> bool {
+    (char >= ' ' && char <= '~') 
+}
+
+fn decode_hex(encoded: &String) -> Vec<u8> {
+    let chars: Vec<char> = encoded.chars().collect();
+    let split = chars
+      .chunks(2)
+      .map(|chunk| chunk.iter().collect::<String>())
+      .collect::<Vec<_>>();
+
+    // Make vector of bytes from octets
+    let mut bytes = Vec::new();
+    for i in split {
+        let res = u8::from_str_radix(&i, 16);
+        match res {
+            Ok(v) => bytes.push(v),
+            Err(e) => println!("Problem with hex: {}", e),
+        };
+    };
+    bytes
+}
+
 fn xor_strings(str1: &String, str2: &String) -> String {
-    str1
-     .chars()
-     .zip(str2.chars())
-     .map(|(a, b)| (a as u8 ^ b as u8) as char)
+    let str1_dec = decode_hex(str1);
+    let str2_dec = decode_hex(str2);
+    str1_dec
+     .iter()
+     .zip(str2_dec.iter())
+     .map(|(a, b)| (a ^ b) as char)
      .collect()
 } 
 
-fn to_chars(str: String) -> Vec<char> {
-    let mut vec = Vec::new();
-    for i in str.chars() {
-        vec.push(i);
-    }
-    vec
-}
-
-fn get_key(ciphers: Vec<String>) -> Vec<char> {
+fn get_key(ciphers: Vec<String>) -> String {
     let max_length = ciphers_max_length(&ciphers);
-    let mut known_key : Vec<char> = vec!['*'; max_length];
-    let empty_string =  empty_string(max_length);
+    let mut known_key : Vec<String> = vec![String::from("00"); max_length];
+    let space_string = space_string(max_length);
     for (i, current_cipher) in ciphers.iter().enumerate() {
-        //FIX: hardcoded length
-        let mut count_spaces = vec![0; max_length]; let mut known_spaces = Vec::new();
+        let mut count_spaces = vec![0; max_length]; 
+        let mut known_spaces = Vec::new();
         for (j, cipher) in ciphers.iter().enumerate() {
             if j != i {
                 let str = xor_strings(current_cipher, cipher);
@@ -69,7 +87,7 @@ fn get_key(ciphers: Vec<String>) -> Vec<char> {
                     if is_alpha(char) {
                        count_spaces[index_char] += 1;
                     }   
-                }              
+                }
             } 
         }    
 
@@ -80,17 +98,31 @@ fn get_key(ciphers: Vec<String>) -> Vec<char> {
             }
         }        
         
-        let xor_with_spaces : Vec<char> = to_chars(xor_strings(current_cipher, &empty_string));
+        let xor_with_spaces : Vec<String> = xor_strings(current_cipher, &space_string)
+          .chars()
+          .map(|c| format!("{:02x}", c as u8))
+          .collect();
         for pos in known_spaces {
-            known_key[pos] = xor_with_spaces[pos];
+            known_key[pos] = xor_with_spaces[pos].clone();
         }
     }
-    known_key
+    known_key.concat()
 }
 
-fn unencrypt(target: &str, key: Vec<char>) {
-    let plain_text: String = target.chars().zip(key).map(|(a, b)| (a as u8 ^ b as u8) as char).collect();
-    println!("{}", plain_text);
+fn unencrypt(target: &String, key: &String) -> String {
+    xor_strings(target, key)
+}
+
+fn print_text(text: String) {
+    print!("Plain text: ");
+    for c in text.chars() {
+        if is_ascii_printable(c) {
+            print!("{}", c);    
+        } else {
+            print!("*");
+        }
+    }
+    println!("");
 }
 
 fn main() {
@@ -106,9 +138,8 @@ fn main() {
     let target_path = &args[2];
     let ciphers = read_file(ciphers_path);
     let target = &read_file(target_path)[0];
-    let key = get_key(ciphers);
-    for i in key.iter() {
-        println!("{}", i);
-    }
-    let plain_target = unencrypt(target, key);
+
+    let key = &get_key(ciphers);
+    let plain_text = unencrypt(target, key);
+    print_text(plain_text);
 }
